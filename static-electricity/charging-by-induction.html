@@ -1,0 +1,339 @@
+<!DOCTYPE html>
+<!-- saved from url=(0083)https://physicstjc.github.io/ophysics/static-electricity/charging-by-induction.html -->
+<html lang="en" data-kantu="1"><head><meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+  
+  <title>Charging by Induction Simulation</title>
+  <style>
+      body {
+      font-family: sans-serif;
+      text-align: center;
+      padding: 10px;
+      margin: 0;
+    }
+
+    canvas {
+      border: 1px solid #ccc;
+      background: #f9f9f9;
+      display: block;
+      margin: 10px auto;
+      max-width: 100%;
+      height: auto;
+    }
+
+    .controls {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: center;
+      gap: clamp(3px, 1.5vw, 10px);
+      margin-top: clamp(5px, 2vw, 10px);
+      padding: 0 clamp(5px, 2vw, 10px);
+    }
+
+    button {
+      padding: clamp(4px, 1.5vw, 10px) clamp(6px, 2.5vw, 15px);
+      font-size: clamp(0.6rem, 2.2vw, 1rem);
+      flex: 1 0 clamp(70px, 18vw, 120px);
+      max-width: clamp(120px, 30vw, 200px);
+      min-width: clamp(60px, 15vw, 90px);
+      white-space: nowrap;
+      border: 1px solid #ccc;
+      border-radius: clamp(2px, 0.5vw, 4px);
+      background: #f0f0f0;
+      cursor: pointer;
+      transition: all 0.2s ease;
+    }
+    
+    button:hover {
+      background: #e0e0e0;
+    }
+    
+    button:active {
+      transform: scale(0.98);
+    }
+
+    /* Container-based scaling for very small screens */
+    @container (max-width: 400px) {
+      button {
+        font-size: clamp(0.55rem, 3vw, 0.7rem);
+        padding: clamp(3px, 1vw, 6px) clamp(4px, 1.5vw, 8px);
+      }
+    }
+    
+    /* Fallback media queries for browsers without container queries */
+    @media (max-width: 400px) {
+      .controls {
+        gap: clamp(2px, 1vw, 5px);
+        margin-top: clamp(3px, 1.5vw, 8px);
+      }
+      
+      button {
+        font-size: clamp(0.55rem, 3.2vw, 0.7rem);
+        padding: clamp(3px, 1vw, 6px) clamp(4px, 1.5vw, 8px);
+        flex: 1 0 clamp(55px, 16vw, 80px);
+        min-width: clamp(50px, 14vw, 70px);
+      }
+    }
+    
+    @media (max-width: 300px) {
+      button {
+        font-size: clamp(0.5rem, 3.5vw, 0.65rem);
+        padding: clamp(2px, 0.8vw, 5px) clamp(3px, 1.2vw, 6px);
+        flex: 1 0 clamp(45px, 15vw, 65px);
+        min-width: clamp(40px, 12vw, 60px);
+      }
+    }
+  </style>
+</head>
+<body>
+  <canvas id="simCanvas" width="640" height="360"></canvas>
+  <div class="controls">
+    <button onclick="toggleRod()">Toggle Rod</button>
+    <button onclick="toggleGround()">Toggle Grounding</button>
+    <button onclick="reset()">Reset</button>
+  </div>
+
+  <script>
+    const canvas = document.getElementById("simCanvas");
+    const ctx = canvas.getContext("2d");
+
+    let rodNear = false;
+    let grounded = false;
+    let electrons = [];
+    let electronsLeaving = [];
+    let positiveCharges = [];
+
+    const can = { x: 400, y: 100, width: 80, height: 120 };
+    const targetIndices = [0, 2, 4];
+    const targetIndices2 = [1, 3, 5];
+    const lowerYLimit = can.y + 130;
+    const upperYLimit = can.y + 120;
+    const bottomIndices = [1, 3, 5]; // bottom row electrons to escape
+
+    function initElectrons() {
+      electrons = [];
+      positiveCharges = [];
+      electronsLeaving = [];
+
+      const rows = 3;
+      const cols = 2;
+      const xStart = can.x + 15;
+      const yStart = can.y + 30;
+      const xSpacing = 30;
+      const ySpacing = 30;
+
+      for (let row = 0; row < rows; row++) {
+        for (let col = 0; col < cols; col++) {
+          const x = xStart + col * xSpacing + 15;
+          const y = yStart + row * ySpacing;
+
+          positiveCharges.push({
+            x: x - 15,
+            y: y,
+            charge: "+",
+            visible: true
+          });
+
+          electrons.push({
+            x: x,
+            y: y,
+            originalX: x,
+            originalY: y,
+            charge: "−",
+            visible: true,
+            leaving: false,
+            returning: false,
+            targetX: null
+          });
+        }
+      }
+    }
+
+    function drawRod() {
+      ctx.fillStyle = "#33ddff";
+      ctx.fillRect(180, 90, 20, 140);
+      ctx.fillStyle = "#000";
+      for (let i = 0; i < 5; i++) {
+        ctx.fillText("−", 185, 105 + i * 20);
+      }
+      ctx.fillText("Negatively charged rod", 110, 260);
+    }
+
+    function drawCan() {
+  // Draw the metal can
+  ctx.fillStyle = "#aaa";
+  ctx.fillRect(can.x, can.y, can.width, can.height);
+  ctx.fillStyle = "#000";
+  ctx.fillText("Metal Can", can.x + 5, can.y - 20);
+
+  // Draw the insulating stand
+  const standWidth = can.width + 10;
+  const standHeight = 20;
+  const standX = can.x - 5;
+  const standY = can.y + can.height;
+
+  ctx.fillStyle = "#964B00"; // brown for the stand
+  ctx.fillRect(standX, standY, standWidth, standHeight);
+  ctx.fillText("Insulating Stand", standX, standY + standHeight + 20);
+}
+
+    function drawGroundWire() {
+      ctx.strokeStyle = "#006600";
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(can.x + can.width, can.y + can.height);
+      ctx.lineTo(can.x + can.width + 50, can.y + can.height + 30);
+      ctx.lineTo(can.x + can.width + 50, can.y + can.height + 70);
+      ctx.stroke();
+
+      ctx.fillStyle = "#006600";
+      ctx.fillText("Earth", can.x + can.width + 35, can.y + can.height + 90);
+    }
+
+    function drawElectrons() {
+      ctx.font = "16px sans-serif";
+
+      positiveCharges.forEach(p => {
+        if (p.visible) {
+          ctx.fillStyle = "blue";
+          ctx.fillText(p.charge, p.x, p.y);
+        }
+      });
+
+      electrons.forEach(e => {
+        if (e.visible) {
+          ctx.fillStyle = "red";
+          ctx.fillText(e.charge, e.x, e.y);
+        }
+      });
+    }
+
+    function updateElectrons() {
+      if (rodNear) {
+        electrons.forEach((e, i) => {
+          if (targetIndices.includes(i) && e.x < can.x + 60) {
+            e.x += 1.5;
+            if (e.y < lowerYLimit) e.y += 0.6;
+          }
+
+          if (targetIndices2.includes(i) && e.x < can.x + 60) {
+            e.x += 1.5;
+            if (e.y < upperYLimit) e.y -= 0.6;
+          }
+        });
+      } else if (!grounded) {
+        // Restore to grid if rod removed and not grounded
+        electrons.forEach(e => {
+          e.x = e.originalX;
+          e.y = e.originalY;
+        });
+      }
+
+      if (grounded && rodNear) {
+        electrons.forEach((e, i) => {
+          if (
+            e.charge === "−" &&
+            bottomIndices.includes(i) &&
+            !e.leaving &&
+            e.visible
+          ) {
+            e.leaving = true;
+            e.targetX = can.x + can.width + 50;
+            electronsLeaving.push(e);
+          }
+        });
+      }
+
+      // Move escaping electrons
+      electronsLeaving.forEach(e => {
+        if (e.x < e.targetX) {
+          e.x += 2;
+          e.y += 0.5;
+        } else {
+          e.visible = false;
+          e.leaving = false;
+        }
+      });
+
+      // Return animation
+      electrons.forEach(e => {
+        if (e.returning) {
+          const dx = e.originalX - e.x;
+          const dy = e.originalY - e.y;
+
+          if (Math.abs(dx) < 1 && Math.abs(dy) < 1) {
+            e.x = e.originalX;
+            e.y = e.originalY;
+            e.visible = true;
+            e.returning = false;
+          } else {
+            e.x += dx * 0.1;
+            e.y += dy * 0.1;
+          }
+        }
+      });
+    }
+
+    function drawFinalState() {
+      let gone = electrons.filter(e => !e.visible).length;
+      if (!rodNear && grounded) {
+        ctx.fillStyle = "#cc0000";
+        ctx.fillText("Can is neutral", 230, 320);
+      } else if (!rodNear && !grounded) {
+        ctx.fillStyle = "#cc0000";
+        ctx.fillText(
+          gone >= 3 ? "Can is positively charged" : "Can is neutral",
+          230,
+          320
+        );
+      }
+    }
+
+    function draw() {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      drawCan();
+      drawElectrons();
+      if (rodNear) drawRod();
+      if (grounded) drawGroundWire();
+      drawFinalState();
+      updateElectrons();
+      requestAnimationFrame(draw);
+    }
+
+    function toggleRod() {
+      if (rodNear && grounded) {
+  // Rod is being removed while grounded → all electrons should return
+      electrons.forEach(e => {
+        if (e.charge === "−" && (!e.visible || !e.leaving)) {
+          e.returning = true;
+          e.visible = true;
+        }
+      });
+      electronsLeaving = [];
+    }
+
+
+      rodNear = !rodNear;
+      if (!rodNear && grounded) {
+        initElectrons();
+      }
+    }
+
+    function toggleGround() {
+      grounded = !grounded;
+      if (!rodNear && grounded) {
+        initElectrons();
+      }
+    }
+
+    function reset() {
+      rodNear = false;
+      grounded = false;
+      initElectrons();
+    }
+
+    initElectrons();
+    draw();
+  </script>
+
+
+</body></html>
